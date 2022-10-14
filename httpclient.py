@@ -18,6 +18,9 @@
 # Write your own HTTP GET and POST
 # The point is to understand what you have to send and get experience with it
 
+from email import header
+from email.quoprimime import body_check
+from pickle import NONE, TRUE
 import sys
 import socket
 import re
@@ -25,15 +28,31 @@ import re
 import urllib.parse
 
 def help():
+
     print("httpclient.py [GET/POST] [URL]\n")
 
 class HTTPResponse(object):
+
     def __init__(self, code=200, body=""):
+
         self.code = code
         self.body = body
 
 class HTTPClient(object):
-    #def get_host_port(self,url):
+
+    def get_host_port(self,url):
+        url = urllib.parse.urlparse(url)
+        if url.hostname:
+            host = url.hostname
+        else:
+            host = localhost
+        
+        if url.port:
+            port = url.port
+        else:
+            port = 80
+
+        return host, port
 
     def connect(self, host, port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -41,13 +60,18 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        return None
+        #print(data)
+        code = int(self.get_headers(data).split()[1])
+        #print(code)
+        return code
 
     def get_headers(self,data):
-        return None
+        header = data.split("\r\n\r\n")[0]
+        return header
 
     def get_body(self, data):
-        return None
+        body = data.split("\r\n")[-1]
+        return body
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -55,7 +79,7 @@ class HTTPClient(object):
     def close(self):
         self.socket.close()
 
-    # read everything from the socket
+    #read everything from the socket
     def recvall(self, sock):
         buffer = bytearray()
         done = False
@@ -65,31 +89,74 @@ class HTTPClient(object):
                 buffer.extend(part)
             else:
                 done = not part
+
         return buffer.decode('utf-8')
 
     def GET(self, url, args=None):
-        code = 500
-        body = ""
+        #used this to understand urllib more: https://realpython.com/urllib-request/
+        #code = 500
+        #body = ""
+        host, port = self.get_host_port(url)
+        url = urllib.parse.urlparse(url)
+
+        if len(url.path) == 0:
+            path = "/"
+        else:
+            path = url.path
+
+        self.connect(host, port)
+        request = f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nConnection: close\r\n\r\n"
+        #print(request)
+        self.sendall(request)
+        data = self.recvall(self.socket)
+        self.close()
+        code = self.get_code(data)
+        body = self.get_body(data)
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
-        code = 500
-        body = ""
+        #code = 500
+        #body = ""
+        host, port = self.get_host_port(url)
+        url = urllib.parse.urlparse(url)
+
+        if len(url.path) == 0:
+            path = "/"
+        else:
+            path = url.path
+
+        length = 0
+        self.connect(host, port)
+        request = f"POST {path} HTTP/1.1\r\nHost: {host}:{port}\r\nContent-type: application/x-www-form-urlencoded\r\nContent-length: {length}\r\n\r\n"
+        if args:
+            length = len(urllib.parse.urlencode(args))
+            request = f"POST {path} HTTP/1.1\r\n\Host: {host}:{port}\r\nContent-type: application/x-www-form-urlencoded\r\nContent-length: {length}\r\nConnection: close\r\n\r\n{urllib.parse.urlencode(args)}"
+        self.sendall(request)
+        #print(request)
+        data = self.recvall(self.socket)
+        self.close()
+        code = self.get_code(data)
+        body = self.get_body(data)
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
         if (command == "POST"):
             return self.POST( url, args )
+
         else:
             return self.GET( url, args )
     
 if __name__ == "__main__":
+
     client = HTTPClient()
     command = "GET"
+
     if (len(sys.argv) <= 1):
         help()
         sys.exit(1)
+
     elif (len(sys.argv) == 3):
         print(client.command( sys.argv[2], sys.argv[1] ))
+
     else:
         print(client.command( sys.argv[1] ))
